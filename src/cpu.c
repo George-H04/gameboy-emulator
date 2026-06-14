@@ -19,25 +19,87 @@ void cpu_dump(cpu_t *cpu)
     printf("|Register SP: 0x%-4X  |\n", cpu->SP);
     printf("|Register PC: 0x%-4X  |\n", cpu->PC);
     printf("*---------------------*\n");
-
-    exit(0);
 }
 
-uint8 fetch(cpu_t *cpu, memory_t *mem)
+uint8 fetch_8(cpu_t *cpu, memory_t *mem)
 {
-    return mem->data[cpu->PC];
+    return mem->data[cpu->PC++];
+}
+
+uint16 fetch_16(cpu_t *cpu, memory_t *mem)
+{
+    uint8 low = fetch_8(cpu, mem);
+    uint8 high = fetch_8(cpu, mem);
+
+    uint16 value = (high << 8) | low;
+
+    return value;
 }
 
 void cpu_step(cpu_t *cpu, memory_t *mem)
 {
-    uint8 opcode = fetch(cpu, mem);
+    uint8 opcode = fetch_8(cpu, mem);
 
-    switch (opcode)
+    if (opcode >= 0x40 && opcode <= 0x7F)
+        ld_reg_reg(cpu, opcode);
+    else
     {
-        case 0x00:      // NOP
-            cpu->PC++;
+        switch (opcode)
+        {
+            case 0x00:      // NOP
+                cpu->PC++;
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+uint8 *get_reg(cpu_t *cpu, uint8 reg)
+{
+    switch(reg)
+    {
+        case 0:
+            return &cpu->B;
+            break;
+        case 1:
+            return &cpu->C;
+            break;
+        case 2:
+            return &cpu->D;
+            break;
+        case 3:
+            return &cpu->E;
+            break;
+        case 4:
+            return &cpu->H;
+            break;
+        case 5:
+            return &cpu->L;
+            break;
+        case 6:     //TODO: SPECIAL HALT CASE?
+            return NULL;
+            break;
+        case 7:
+            return &cpu->A;
             break;
         default:
             break;
     }
+    return NULL;
+}
+
+void ld_reg_reg(cpu_t *cpu, uint8 opcode)
+{
+    // MASK OUT REGISTERS
+    uint8 dest_bits = (opcode & 0x38) >> 3; // BINARY 00111000
+    uint8 src_bits = opcode & 0x7;   // BINARY 00000111
+
+    uint8 *dest = get_reg(cpu, dest_bits);
+    uint8 *src = get_reg(cpu, src_bits);
+
+    if (!dest && !src)
+        printf("HALT!!!\n");
+
+    *dest = *src;
 }

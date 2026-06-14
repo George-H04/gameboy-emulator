@@ -22,13 +22,18 @@ typedef struct __cpu_t
     uint16 PC;      // PROGRAM COUNTER
 } cpu_t;
 
+#define HALT        99
+#define REG_ERROR   98
+
 // FUNCTION DECLARATIONS
 void cpu_dump(cpu_t *cpu);
 
-uint8 fetch(cpu_t *cpu, memory_t *mem);
+uint8 fetch_8(cpu_t *cpu, memory_t *mem);
+
+uint16 fetch_16(cpu_t *cpu, memory_t *mem);
 
 void cpu_step(cpu_t *cpu, memory_t *mem);
 
-
+void ld_reg_reg(cpu_t *cpu, uint8 opcode);
 
 #endif

@@ -1,6 +1,6 @@
-test_nop: tests/test_nop.c src/cpu.c src/memory.c
+test: tests/test.c src/cpu.c src/memory.c
 	gcc -Wall -Wextra -g -Iinclude \
-		tests/test_nop.c \
+		tests/test.c \
 		src/cpu.c \
 		src/memory.c \
-		-o test_nop
+		-o test_emu
