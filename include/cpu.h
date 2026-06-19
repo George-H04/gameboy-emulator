@@ -6,6 +6,7 @@
 
 typedef struct __cpu_t
 {
+    // 8-bit registers
     uint8 A;        // ACCUMULATOR
     uint8 F;        // FLAGS
 
@@ -17,6 +18,12 @@ typedef struct __cpu_t
 
     uint8 H;
     uint8 L;
+
+    // 16-bit registers
+    uint16 AF;
+    uint16 BC;
+    uint16 DE;
+    uint16 HL;      // GENERAL POINTER
 
     uint16 SP;      // STACK POINTER
     uint16 PC;      // PROGRAM COUNTER
@@ -35,5 +42,7 @@ uint16 fetch_16(cpu_t *cpu, memory_t *mem);
 void cpu_step(cpu_t *cpu, memory_t *mem);
 
 void ld_reg_reg(cpu_t *cpu, uint8 opcode);
+
+uint8 get_bits(uint8 start, uint8 len);
 
 #endif
