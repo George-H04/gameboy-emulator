@@ -6,3 +6,12 @@ A fun project to help assist me with systems and optimization concepts
 TODO:
     Create CPU
         - Implement instruction set
+    Upgrade Fetch, Decode, Execute loop
+        - Edit rom loader file to properly load a ROM into memory
+        - Edit main.c to contain the main loop of cpu_step
+    Add a failure path for unimplemented instructions
+    Test on a simple test rom to verify my structure is working
+
+    Finish instruction set
+
+    More test ROMs

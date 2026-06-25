@@ -9,6 +9,6 @@ typedef struct __memory_t
 } memory_t;
 
 uint8 readb(memory_t *mem, uint16 addr);
-void  writeb(memory_t *mem, uint16 addr, uint8 value);
+void writeb(memory_t *mem, uint16 addr, uint8 value);
 
 #endif

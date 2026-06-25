@@ -6,27 +6,41 @@
 
 typedef struct __cpu_t
 {
-    // 8-bit registers
-    uint8 A;        // ACCUMULATOR
-    uint8 F;        // FLAGS
+    union {
+        uint16 AF;
+        struct {
+            uint8 A;    // Accumulator
+            uint8 F;    // Flags
+        };
+    };
 
-    uint8 B;
-    uint8 C;
+    union {
+        uint16 BC;
+        struct {
+            uint8 B;    
+            uint8 C;
+        };
+    };
 
-    uint8 D;
-    uint8 E;
+    union {
+        uint16 DE;
+        struct {
+            uint8 D;    
+            uint8 E;
+        };
+    };
 
-    uint8 H;
-    uint8 L;
-
-    // 16-bit registers
-    uint16 AF;
-    uint16 BC;
-    uint16 DE;
-    uint16 HL;      // GENERAL POINTER
+    union {    // General pointer
+        uint16 HL;
+        struct {
+            uint8 H;    
+            uint8 L;
+        };
+    };
 
     uint16 SP;      // STACK POINTER
     uint16 PC;      // PROGRAM COUNTER
+
 } cpu_t;
 
 #define HALT        99
@@ -35,14 +49,22 @@ typedef struct __cpu_t
 // FUNCTION DECLARATIONS
 void cpu_dump(cpu_t *cpu);
 
-uint8 fetch_8(cpu_t *cpu, memory_t *mem);
+void initialize_cpu(cpu_t *cpu);
 
-uint16 fetch_16(cpu_t *cpu, memory_t *mem);
+int8 fetch_byte(cpu_t *cpu, memory_t *mem);
+
+int16 fetch_word(cpu_t *cpu, memory_t *mem);
 
 void cpu_step(cpu_t *cpu, memory_t *mem);
 
-void ld_reg_reg(cpu_t *cpu, uint8 opcode);
+uint8 get_bits(uint8 byte, uint8 start, uint8 len);
 
-uint8 get_bits(uint8 start, uint8 len);
+void dispatch_block_zero(cpu_t *cpu, memory_t *mem, uint8 opcode);
+
+void dispatch_block_one(cpu_t *cpu, uint8 opcode, memory_t *mem);
+
+void dispatch_block_three(cpu_t *cpu, memory_t *mem);
+
+void uint8_to_binary(uint8 value, char *out);
 
 #endif
