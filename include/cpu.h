@@ -46,14 +46,22 @@ typedef struct __cpu_t
 #define HALT        99
 #define REG_ERROR   98
 
+#define THREE_BITS  0x7
+
+// Values are bit positions (0-indexed)
+#define ZERO_FLAG   7
+#define SUB_FLAG    6
+#define HALF_CARRY  5
+#define CARRY       4
+
 // FUNCTION DECLARATIONS
 void cpu_dump(cpu_t *cpu);
 
 void initialize_cpu(cpu_t *cpu);
 
-int8 fetch_byte(cpu_t *cpu, memory_t *mem);
+uint8 fetch_byte(cpu_t *cpu, memory_t *mem);
 
-int16 fetch_word(cpu_t *cpu, memory_t *mem);
+uint16 fetch_word(cpu_t *cpu, memory_t *mem);
 
 void cpu_step(cpu_t *cpu, memory_t *mem);
 

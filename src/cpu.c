@@ -47,7 +47,6 @@ void cpu_step(cpu_t *cpu, memory_t *mem)
     }
 }
 
-
 /**************************************************************
  *                       HELPER FUNCTIONS                     *
  **************************************************************/
@@ -69,12 +68,12 @@ void cpu_dump(cpu_t *cpu)
     printf("*----------------------*\n");
 }
 
-int8 fetch_byte(cpu_t *cpu, memory_t *mem)
+uint8 fetch_byte(cpu_t *cpu, memory_t *mem)
 {
     return mem->data[cpu->PC++];
 }
 
-int16 fetch_word(cpu_t *cpu, memory_t *mem)
+uint16 fetch_word(cpu_t *cpu, memory_t *mem)
 {
     uint8 low = fetch_byte(cpu, mem);
     uint8 high = fetch_byte(cpu, mem);
@@ -98,6 +97,22 @@ uint8 get_bits(uint8 byte, uint8 start, uint8 len)
     return (byte >> shift) & ((1u << len) - 1);
 }
 
+void set_bit(uint8 *byte, uint8 pos)
+{
+    *byte |= (1UL << pos);
+}
+
+void clear_bits(uint8 *byte, uint8 pos, uint8 len)
+{
+    uint8 shift = pos - len + 1;
+    uint8 mask = ((1u << len) - 1) << shift;
+    *byte &= ~mask;
+}
+
+void toggle_bit(uint8 *byte, uint8 pos)
+{
+    *byte ^= (1UL << pos);
+}
 
 /**************************************************************
  *                      PRIVATE FUNCTIONS                     *
@@ -209,13 +224,12 @@ void imm_to_mem(cpu_t *cpu, memory_t *mem, uint8 opcode)
 }
 
 static
-void imm_to_sp(cpu_t *cpu, memory_t *mem)
+void sp_to_imm(cpu_t *cpu, memory_t *mem)
 {
-    // Mem goes into SP, or other way??
     uint16 imm = fetch_word(cpu, mem);
-    uint8 data = readb(mem, imm);
 
-    cpu->SP = data;
+    writeb(mem, imm + 1, cpu->SP & 0xFF);
+    writeb(mem, imm, cpu->SP >> 8);
 }
 
 static
@@ -242,7 +256,19 @@ void add_hl(cpu_t *cpu, uint8 opcode)
     uint8 arg_bits = get_bits(opcode, 5, 2);
     uint16 *reg = get_r16_reg(cpu, arg_bits);
 
+    if (((uint32) cpu->HL + *reg) > 0xFFFF)
+        set_bit(&cpu->F, CARRY);
+    else
+        clear_bits(&cpu->F, CARRY, 1);
+
+    if ((cpu->HL & 0xFFF) + (*reg & 0xFFF) > 0xFFF)
+        set_bit(&cpu->F, HALF_CARRY);
+    else
+        clear_bits(&cpu->F, HALF_CARRY, 1);
+
     cpu->HL += *reg;
+
+    clear_bits(&cpu->F, SUB_FLAG, 1);
 }
 
 static
@@ -274,10 +300,149 @@ void ld_imm8(cpu_t *cpu, memory_t *mem, uint8 opcode)
 }
 
 static
-void jmp_imm8(cpu_t *cpu, memory_t *mem)
+void jmp_imm8(cpu_t *cpu, int8 offset)
 {
-    uint8 offset = fetch_byte(cpu, mem);
     cpu->PC += offset;
+}
+
+static
+void rlca(cpu_t *cpu)
+{
+    uint8 msb = get_bits(cpu->A, 7, 1);
+
+    cpu->A <<= 1;
+
+    if (msb)
+    {
+        cpu->A |= msb;
+        set_bit(&cpu->F, CARRY);
+    }
+    else
+    {
+        clear_bits(&cpu->F, CARRY, 1);
+    }
+
+    clear_bits(&cpu->F, 7, THREE_BITS);
+}
+
+static
+void rrca(cpu_t *cpu)
+{
+    uint8 lsb = get_bits(cpu->A, 0, 1);
+
+    cpu->A >>= 1;
+
+    if (lsb)
+    {
+        cpu->A |= (lsb << 7);
+        set_bit(&cpu->F, CARRY);
+    }
+    else
+    {
+        clear_bits(&cpu->F, CARRY, 1);
+    }
+
+    clear_bits(&cpu->F, 7, THREE_BITS);
+}
+
+static
+void rla(cpu_t *cpu)
+{
+    uint8 msb = get_bits(cpu->A, 7, 1);
+    uint8 carry = get_bits(cpu->F, CARRY, 1);
+
+    cpu->A <<= 1;
+
+    if (carry)
+        set_bit(&cpu->A, 0);
+    
+    if (msb)
+        set_bit(&cpu->F, CARRY);
+    else
+        clear_bits(&cpu->F, CARRY, 1);
+    
+    clear_bits(&cpu->F, 7, THREE_BITS);
+}
+
+static
+void rra(cpu_t *cpu)
+{
+    uint8 lsb = get_bits(cpu->A, 0, 1);
+    uint8 carry = get_bits(cpu->F, CARRY, 1);
+
+    cpu->A >>= 1;
+
+    if (carry)
+        set_bit(&cpu->A, 7);
+    
+    if (lsb)
+        set_bit(&cpu->F, CARRY);
+    else
+        clear_bits(&cpu->F, CARRY, 1);
+    
+    clear_bits(&cpu->F, 7, THREE_BITS);
+}
+
+static
+void daa(cpu_t *cpu)
+{
+    uint8 adjustment = 0;
+    uint8 half_carry = get_bits(cpu->F, HALF_CARRY, 1);
+    uint8 carry = get_bits(cpu->F, CARRY, 1);
+
+    if (get_bits(cpu->F, SUB_FLAG, 1))     // Subtract flag
+    {
+        if (half_carry) adjustment += 0x6;
+
+        if (carry) adjustment += 0x60;
+
+        cpu->A -= adjustment;
+
+    }
+    else
+    {
+        if (half_carry || (cpu->A & 0xF) > 0x9)
+            adjustment += 0x6;
+        
+        if (carry || (cpu->A > 0x99))
+        {
+            adjustment += 0x60;
+            set_bit(&cpu->F, CARRY);
+        }
+
+        cpu->A += adjustment;
+    }
+
+    if (cpu->A == 0)
+        set_bit(&cpu->F, ZERO_FLAG);
+    else
+        clear_bits(&cpu->F, ZERO_FLAG, 1);
+
+    clear_bits(&cpu->F, HALF_CARRY, 1);
+}
+
+static
+void cpl(cpu_t *cpu)
+{
+    cpu->A = ~cpu->A;
+
+    set_bit(&cpu->F, SUB_FLAG);
+    set_bit(&cpu->F, HALF_CARRY);
+}
+
+static
+void scf(cpu_t *cpu)
+{
+    set_bit(&cpu->F, CARRY);
+
+    clear_bits(&cpu->F, 6, 2);
+}
+
+static
+void ccf(cpu_t *cpu)
+{
+    toggle_bit(&cpu->F, CARRY);
+    clear_bits(&cpu->F, 6, 2);
 }
 
 // HANDLE INSTRUCTIONS
@@ -289,27 +454,35 @@ void dispatch_block_zero(cpu_t *cpu, memory_t *mem, uint8 opcode)
         case 0:     // nop
             return;
         case 7:     // rlca
+            rlca(cpu);
             return;
         case 15:    // rrca
+            rrca(cpu);
             return;
         case 23:    // rla
+            rla(cpu);
             return;
         case 24:    // jmp, imm8
-            jmp_imm8(cpu, mem);
+            jmp_imm8(cpu, (int8) fetch_byte(cpu, mem));
             return;
         case 31:    // rra
+            rra(cpu);
             return;
         case 39:    // daa
+            daa(cpu);
             return;
         case 47:    // cpl
+            cpl(cpu);
             return;
         case 55:    // scf
+            scf(cpu);
             return;
         case 63:    // ccf
+            ccf(cpu);
             return;
         case 16:    // stop
             fetch_byte(cpu, mem);
-            // Do something to halt?
+            // Do something to mimic low power mode?
             return;
     }
 
@@ -331,16 +504,16 @@ void dispatch_block_zero(cpu_t *cpu, memory_t *mem, uint8 opcode)
                 jump = (get_bits(cpu->F, 4, 1) == 0);
                 break;
             case 3: // C
-                jump = (get_bits(cpu->F, 7, 1) == 0);
+                jump = (get_bits(cpu->F, 4, 1) == 1);
                 break;
         }
 
+        int8 offset = (int8) fetch_byte(cpu, mem);
         if (jump)
-            jmp_imm8(cpu, mem);
+            jmp_imm8(cpu, offset);
         
         return;
     }
-
 
     if (!(opcode & (1 << 2)))
     {
@@ -359,7 +532,7 @@ void dispatch_block_zero(cpu_t *cpu, memory_t *mem, uint8 opcode)
                 inc_r16(cpu, opcode);
                 break;
             case 8:     // ld [imm16], sp
-                imm_to_sp(cpu, mem);
+                sp_to_imm(cpu, mem);
                 break;
             case 9:     // add hl, r16
                 add_hl(cpu, opcode);
@@ -372,7 +545,6 @@ void dispatch_block_zero(cpu_t *cpu, memory_t *mem, uint8 opcode)
                 break;
             default:
             {
-                // printf("Uncrecognized op at PC = 0x%d\n", cpu->PC);
                 char binary[9];
                 uint8_to_binary(opcode, binary);
                 printf("Opcode: %s\n", binary);

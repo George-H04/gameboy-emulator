@@ -1,7 +1,8 @@
 Goal:
     Build a gameboy emulator
 
-A fun project to help assist me with systems and optimization concepts
+A fun project to help assist me with systems and optimization concepts.
+If I can learn a lot about how systems operate, and pick up some genuinely useful skills, then this will be a huge success. Plus it's fun!
 
 TODO:
     Create CPU
@@ -13,5 +14,7 @@ TODO:
     Test on a simple test rom to verify my structure is working
 
     Finish instruction set
+
+    Work on correct memory management.
 
     More test ROMs
