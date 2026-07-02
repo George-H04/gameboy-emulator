@@ -27,15 +27,16 @@ void cpu_step(cpu_t *cpu, memory_t *mem)
     switch (family)
     {
         case 0:
-            dispatch_block_zero(cpu, mem, opcode);
+            dispatch_block_zero(cpu, opcode, mem);
             break;
         case 1:
             dispatch_block_one(cpu, opcode, mem);
             break;
         case 2:
+            dispatch_block_two(cpu, opcode, mem);
             break;
         case 3:
-            dispatch_block_three(cpu, mem);
+            dispatch_block_three(cpu, opcode, mem);
             break;
         default:
             {
@@ -445,8 +446,150 @@ void ccf(cpu_t *cpu)
     clear_bits(&cpu->F, 6, 2);
 }
 
+static
+void add_r8(cpu_t *cpu, uint8 val)
+{
+    // Check for overflow
+    if (((uint16) cpu->A + val) > 0xFF)
+        set_bit(cpu->F, CARRY);
+    else
+        clear_bits(cpu->F, CARRY, 1);
+
+    if (((cpu->A & 0xF) + (val & 0xF)) > 0xF)
+        set_bit(cpu->F, HALF_CARRY);
+    else
+        clear_bits(cpu->F, HALF_CARRY, 1);
+
+    cpu->A += val;
+    
+    // Check for zero sum
+    if (cpu->A == 0)
+        set_bit(cpu->F, ZERO_FLAG);
+    else
+        clear_bits(cpu->F, ZERO_FLAG, 1);
+
+    set_bit(cpu->F, SUB_FLAG);
+}
+
+static
+void adc_r8(cpu_t *cpu, uint8 val)
+{
+    val += get_bits(cpu->F, CARRY, 1);
+    add_r8(cpu, val);
+}
+
+static
+void sub_r8(cpu_t *cpu, uint8 val)
+{
+    // Borrow flags
+    if (val > cpu->A)
+        set_bit(cpu->F, CARRY);
+    else
+        clear_bits(cpu->F, CARRY, 1);
+
+    if ((val & 0xF) > (cpu->A & 0xF))
+        set_bit(cpu->F, HALF_CARRY);
+    else
+        clear_bits(cpu->F, HALF_CARRY, 1);
+
+    cpu->A -= val;
+
+    // Check for zero sum
+    if (cpu->A == 0)
+        set_bit(cpu->F, ZERO_FLAG);
+    else
+        clear_bits(cpu->F, ZERO_FLAG, 1);
+
+    set_bit(cpu->F, SUB_FLAG);
+}
+
+static
+void sbc_r8(cpu_t *cpu, uint8 val)
+{
+    val += get_bits(cpu->F, CARRY, 1);
+
+    sub_r8(cpu, val);
+}
+
+static
+void and_r8(cpu_t *cpu, uint8 val)
+{
+    cpu->A &= val;
+
+    if (cpu->A == 0)
+        set_bit(cpu->F, ZERO_FLAG);
+    else
+        clear_bits(cpu->F, ZERO_FLAG, 1);
+    
+    // Clear rest of flags, then set the one unconditional
+    clear_bits(cpu->F, SUB_FLAG, 3);
+    set_bit(cpu->F, HALF_CARRY);
+}
+
+static
+void xor_r8(cpu_t *cpu, uint8 val)
+{
+    cpu->A ^= val;
+
+    if (cpu->A == 0)
+        set_bit(cpu->F, ZERO_FLAG);
+    else
+        clear_bits(cpu->F, ZERO_FLAG, 1);
+
+    clear_bits(cpu->F, SUB_FLAG, 3);
+}
+
+static
+void or_r8(cpu_t *cpu, uint8 val)
+{
+    cpu->A |= val;
+
+    if (cpu->A == 0)
+        set_bit(cpu->F, ZERO_FLAG);
+    else
+        clear_bits(cpu->F, ZERO_FLAG, 1);
+
+    clear_bits(cpu->F, SUB_FLAG, 3);
+}
+
+static
+void jmp_imm16(cpu_t *cpu, memory_t *mem)
+{
+    uint16 new_addr = fetch_word(cpu, mem);
+    cpu->PC = new_addr;
+}
+
+static
+void cp_r8(cpu_t *cpu, uint8 val)
+{
+    uint8 comp = cpu->A - val;
+
+    if (comp == 0)
+        set_bit(cpu->F, ZERO_FLAG);
+    else
+        clear_bits(cpu->F, ZERO_FLAG, 1);
+
+    if (val > cpu->A)
+        set_bit(cpu->F, CARRY);
+    else
+        clear_bits(cpu->F, CARRY, 1);
+
+    if ((val & 0xF) > (cpu->A & 0xF))
+        set_bit(cpu->F, HALF_CARRY);
+    else
+        clear_bits(cpu->F, HALF_CARRY, 1);
+
+    set_bit(cpu->F, SUB_FLAG);
+}
+
+static
+void jmp_hl(cpu_t *cpu)
+{
+    cpu->PC = cpu->HL;
+}
+
 // HANDLE INSTRUCTIONS
-void dispatch_block_zero(cpu_t *cpu, memory_t *mem, uint8 opcode)
+void dispatch_block_zero(cpu_t *cpu, uint8 opcode, memory_t *mem)
 {
     // Handle unique instructions first (and both jumps)
     switch (opcode)
@@ -594,28 +737,109 @@ void dispatch_block_one(cpu_t *cpu, uint8 opcode, memory_t *mem)
     *dest = *src;
 }
 
-void dispatch_block_three(cpu_t *cpu, memory_t *mem)
+// 8-bit arithmetic
+void dispatch_block_two(cpu_t *cpu, uint8 opcode, memory_t *mem)
 {
-    // Instructions either take one operand, or one and a bit index
-    uint8 opcode = fetch_byte(cpu, mem);
+    uint8 instruction = get_bits(opcode, 5, 3);
+    uint8 operand = get_bits(opcode, 2, 3);
+    uint8 *reg = get_reg_8(cpu, operand, mem);
 
-    // uint8 operand = get_bits(opcode, 2, 3);
+   handle_arithmetic(cpu, instruction, *reg);
+}
 
-    uint8 op_type = get_bits(opcode, 7, 2);
-
-    if (op_type)
+// Immediate arithmetic/logic & misc
+void dispatch_block_three(cpu_t *cpu, uint8 opcode, memory_t *mem)
+{
+    switch (opcode)
     {
-        // uint8 bit_idx = get_bits(opcode, 5, 3);
-
-        char binary[9];
-        uint8_to_binary(opcode, binary);
-        printf("Opcode: %s\n", binary);
+        case 0xC9:  // ret
+            break;
+        case 0xD9:  // reti
+            break;
+        case 0xC3:  // jmp imm16
+            jmp_imm16(cpu, mem);
+            break;
+        case 0xE9:  // jmp hl
+            jmp_hl(cpu);
+            break;
+        case 0xCD:  // call imm16
+            break;
+        case 0xCB:  // CB prefixed
+            dispatch_CB(cpu, opcode, mem);
+            break;
+        case 0xE2:  // ldh [c], a
+            break;
+        case 0xE0:  // ldh [imm8], a
+            break;
+        case 0xEA:  // ld [imm16], a
+            break;
+        case 0xF2:  // ldh a, [c]
+            break;
+        case 0xF0:  // ldh a, [imm8]
+            break;
+        case 0xFA:  // ldh a, [imm16]
+            break;
+        case 0xE8:  // add sp, imm8
+            break;
+        case 0xF8:  //  ld hl, sp + imm8
+            break;
+        case 0xF9:  // ld sp, hl
+            break;
+        case 0xF3:  // di
+            break;
+        case 0xFB:  // ei
+            break;
+        default:
+            break;
     }
-    else
+
+    uint8 instruction = get_bits(opcode, 2, 3);
+
+    switch (instruction)
     {
-        char binary[9];
-        uint8_to_binary(opcode, binary);
-        printf("Opcode: %s\n", binary);
+        case 6: // Arithmetic
+            uint8 val = fetch_byte(cpu, mem);
+            uint8 op = get_bits(opcode, 5, 3);
+            handle_arithmetic(cpu, op, mem);
+            break;
+    }
+}
+
+// $CB prefix instructions
+void dispatch_CB(cpu_t *cpu, uint8 opcode, memory_t *mem)
+{
+
+}
+
+static
+void handle_arithmetic(cpu_t *cpu, uint8 op, uint8 val)
+{
+    switch (op)
+    {
+        case 0:
+            add_r8(cpu, val);
+            break;
+        case 1:
+            adc_r8(cpu, val);
+            break;
+        case 2:
+            sub_r8(cpu, val);
+            break;
+        case 3:
+            sbc_r8(cpu, val);
+            break;
+        case 4:
+            and_r8(cpu, val);
+            break;
+        case 5:
+            xor_r8(cpu, val);
+            break;
+        case 6:
+            or_r8(cpu, val);
+            break;
+        case 7:
+            cp_r8(cpu, val);
+            break;
     }
 }
 

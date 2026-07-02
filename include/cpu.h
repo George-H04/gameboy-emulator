@@ -67,11 +67,13 @@ void cpu_step(cpu_t *cpu, memory_t *mem);
 
 uint8 get_bits(uint8 byte, uint8 start, uint8 len);
 
-void dispatch_block_zero(cpu_t *cpu, memory_t *mem, uint8 opcode);
+void dispatch_block_zero(cpu_t *cpu, uint8 opcode, memory_t *mem);
 
 void dispatch_block_one(cpu_t *cpu, uint8 opcode, memory_t *mem);
 
-void dispatch_block_three(cpu_t *cpu, memory_t *mem);
+void dispatch_block_two(cpu_t *cpu, uint8 opcode, memory_t *mem);
+
+void dispatch_block_three(cpu_t *cpu, uint8 opcode, memory_t *mem);
 
 void uint8_to_binary(uint8 value, char *out);
 
